@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Prévision Cyanobactéries</title>
+    
+    <style>
+        /* Styles de base */
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f0f9ff;
+            margin: 0;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        
+        h1, h2 {
+            color: #2563eb;
+            text-align: center;
+            margin-bottom: 20px;
+        }
+
+        .nav-links {
+            text-align: right;
+            margin-bottom: 20px;
+        }
+
+        .nav-links a {
+            color: #2563eb;
+            text-decoration: none;
+            margin-left: 15px;
+        }
+        
+        .form-group {
+            margin-bottom: 15px;
+        }
+        
+        label {
+            display: block;
+            margin-bottom: 5px;
+            color: #4b5563;
+        }
+        
+        input, select {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #d1d5db;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+        
+        button {
+            width: 100%;
+            padding: 10px;
+            background-color: #2563eb;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+        
+        button:hover {
+            background-color: #1d4ed8;
+        }
+
+        button:disabled {
+            background-color: #93c5fd;
+            cursor: not-allowed;
+        }
+
+        .predictions {
+            margin-top: 20px;
+        }
+
+        .prediction-card {
+            padding: 15px;
+            margin-bottom: 10px;
+            border-radius: 4px;
+        }
+        
+        .prediction-card.VERT {
+            background-color: #dcfce7;
+        }
+        
+        .prediction-card.ORANGE {
+            background-color: #ffedd5;
+        }
+        
+        .prediction-card.ROUGE {
+            background-color: #fee2e2;
+        }
+        
+        .flag {
+            font-weight: bold;
+            margin: 10px 0;
+        }
+        
+        .VERT .flag {
+            color: #166534;
+        }
+        
+        .ORANGE .flag {
+            color: #9a3412;
+        }
+        
+        .ROUGE .flag {
+            color: #991b1b;
+        }
+        
+        .conditions {
+            font-size: 0.9em;
+            color: #4b5563;
+        }
+
+        .lake-list {
+            margin: 20px 0;
+            padding: 15px;
+            background-color: #f8fafc;
+            border-radius: 8px;
+        }
+
+        .lake-item {
+            padding: 10px;
+            margin: 5px 0;
+            background-color: white;
+            border: 1px solid #e2e8f0;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+
+        .lake-item:hover {
+            background-color: #f1f5f9;
+        }
+
+        .button-group {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+
+        .button-group button {
+            flex: 1;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="nav-links">
+            <a href="{{ url_for('logout') }}">Déconnexion</a>
+        </div>
+
+        <h1>Prévision Cyanobactéries</h1>
+        
+        <div id="lakePredictionForm">
+            <form id="predictionForm">
+                <div class="form-group">
+                    <label>Nom du lac</label>
+                    <input 
+                        type="text" 
+                        name="lakeName" 
+                        id="lakeName"
+                        required
+                    >
+                </div>
+
+                <div class="form-group">
+                    <label>Latitude</label>
+                    <input 
+                        type="number" 
+                        name="latitude" 
+                        id="latitude"
+                        step="0.000001" 
+                        placeholder="46.2276" 
+                        required 
+                    >
+                </div>
+                
+                <div class="form-group">
+                    <label>Longitude</label>
+                    <input 
+                        type="number" 
+                        name="longitude" 
+                        id="longitude"
+                        step="0.000001" 
+                        placeholder="2.2137" 
+                        required 
+                    >
+                </div>
+                
+                <div class="form-group">
+                    <label>Type de lac</label>
+                    <select name="lakeType" id="lakeType" required>
+                        <option value="forest">Forestier</option>
+                        <option value="agriculture">Agricole</option>
+                        <option value="urban">Urbain</option>
+                    </select>
+                </div>
+                
+                <div class="button-group">
+                    <button type="submit" id="submitBtn">Obtenir la prévision</button>
+                    <button type="button" id="saveBtn">Enregistrer le lac</button>
+                </div>
+            </form>
+        </div>
+
+        <div class="lake-list">
+            <h2>Mes lacs enregistrés</h2>
+            <div id="savedLakes">
+                {% for lake in lakes %}
+                <div class="lake-item" 
+                     onclick="loadLake({
+                        name: '{{ lake.name }}',
+                        latitude: {{ lake.latitude }},
+                        longitude: {{ lake.longitude }},
+                        type: '{{ lake.type }}'
+                     })">
+                    {{ lake.name }} ({{ lake.latitude }}, {{ lake.longitude }}) - {{ lake.type }}
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        
+        <div id="predictions"></div>
+    </div>
+
+    <script>
+        document.getElementById('predictionForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const submitBtn = document.getElementById('submitBtn');
+            const predictionsDiv = document.getElementById('predictions');
+            
+            submitBtn.disabled = true;
+            submitBtn.textContent = 'Chargement...';
+            
+            try {
+                const formData = new FormData();
+                formData.append('latitude', document.getElementById('latitude').value);
+                formData.append('longitude', document.getElementById('longitude').value);
+                formData.append('lakeType', document.getElementById('lakeType').value);
+
+                const response = await fetch('/predict', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    predictionsDiv.innerHTML = '<h2>Prévisions sur 7 jours</h2>';
+                    
+                    data.predictions.forEach(day => {
+                        const card = document.createElement('div');
+                        card.className = `prediction-card ${day.flag}`;
+                        
+                        card.innerHTML = `
+                            <div style="font-weight: bold;">${day.date}</div>
+                            <div class="flag">${day.flag}</div>
+                            <div style="margin: 10px 0;">${day.message}</div>
+                            <div class="conditions">
+                                ${Object.entries(day.conditions)
+                                    .map(([key, value]) => `${key}: ${typeof value === 'number' ? value.toFixed(1) : value}`)
+                                    .join('<br>')}
+                            </div>
+                        `;
+                        
+                        predictionsDiv.appendChild(card);
+                    });
+                } else {
+                    alert('Erreur lors de la récupération des prédictions');
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                alert('Une erreur est survenue');
+            } finally {
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'Obtenir la prévision';
+            }
+        });
+
+        document.getElementById('saveBtn').addEventListener('click', async () => {
+            const formData = new FormData();
+            formData.append('name', document.getElementById('lakeName').value);
+            formData.append('latitude', document.getElementById('latitude').value);
+            formData.append('longitude', document.getElementById('longitude').value);
+            formData.append('type', document.getElementById('lakeType').value);
+
+            try {
+                const response = await fetch('/lakes', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (response.ok) {
+                    location.reload(); // Recharger la page pour voir le nouveau lac
+                } else {
+                    const data = await response.json();
+                    alert(data.error || 'Erreur lors de l\'enregistrement du lac');
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                alert('Une erreur est survenue');
+            }
+        });
+
+        function loadLake(lake) {
+            console.log('Loading lake:', lake);  // Pour debug
+            document.getElementById('lakeName').value = lake.name;
+            document.getElementById('latitude').value = lake.latitude;
+            document.getElementById('longitude').value = lake.longitude;
+            document.getElementById('lakeType').value = lake.type;
+        }
+    </script>
+</body>
+</html>
