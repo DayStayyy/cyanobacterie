@@ -48,11 +48,12 @@ def evaluate_risk_level(conditions, lake_type, stratification):
         if conditions['wind'] < wind_threshold['high']:
             high_risk += 1
             
-    # Sol (commun à tous les types)
-    if conditions['soil_temp'] > 24:
-        risk_score += 1
-        if conditions['soil_temp'] > 26:
-            high_risk += 1
+    if(conditions['soil_temp']):
+        # Sol (commun à tous les types)
+        if conditions['soil_temp'] > 24:
+            risk_score += 1
+            if conditions['soil_temp'] > 26:
+                high_risk += 1
 
     # Drapeaux
     if risk_score <= 1:

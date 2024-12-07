@@ -19,9 +19,9 @@ def analyze_cyano_presence(file_path, target_lake):
     return pd.DataFrame(daily_data).sort_values('date')
 
 def get_risk_level(toxic_density):
-    if toxic_density > 100:
+    if toxic_density > 2000:
         return "ROUGE"
-    elif toxic_density > 50:
+    elif toxic_density > 1000:
         return "ORANGE"
     return "VERT"
 
@@ -134,51 +134,70 @@ def evaluate_risk(latitude, longitude, lake_name, lake_type, stratification):
 
 
 def evaluate_risk_level(conditions, lake_type, stratification):
+    """
+    Ajuste les seuils de risque selon le type de lac et les variations météo
+    Types: 'forest', 'agriculture', 'urban'
+    """
     risk_score = 0
     high_risk = 0
     
+    # Ajustement des seuils selon le type de lac
     temp_threshold = {
         'forest': {'base': 23, 'high': 25},
         'agriculture': {'base': 24, 'high': 26},
         'urban': {'base': 25, 'high': 27}
     }[lake_type]
     
-    humidity_threshold = {
-        'strong': {'base': 70, 'high': 80},
-        'weak': {'base': 65, 'high': 75},
-        'none': {'base': 60, 'high': 70}
-    }[stratification]
-    
-    wind_threshold = {
-        'strong': {'base': 8, 'high': 5},
-        'weak': {'base': 10, 'high': 7},
-        'none': {'base': 12, 'high': 9}
-    }[stratification]
+    # Seuils fixes sans stratification
+    humidity_threshold = {'base': 65, 'high': 75}
+    wind_threshold = {'base': 10, 'high': 7}
 
+    # Température
     if conditions['temp'] >= temp_threshold['base']:
         risk_score += 1
         if conditions['temp'] >= temp_threshold['high']:
             high_risk += 1
+            
+    # Humidité
     if conditions['humidity'] > humidity_threshold['base']:
         risk_score += 1
         if conditions['humidity'] > humidity_threshold['high']:
             high_risk += 1
+    
+    # Vent
     if conditions['wind'] < wind_threshold['base']:
         risk_score += 1
         if conditions['wind'] < wind_threshold['high']:
             high_risk += 1
-    if conditions['soil_temp'] > 24:
-        risk_score += 1
-        if conditions['soil_temp'] > 26:
+            
+    # Sol
+    if conditions.get('soil_temp'):
+        if conditions['soil_temp'] > 24:
+            risk_score += 1
+            if conditions['soil_temp'] > 26:
+                high_risk += 1
+
+    # Score des variations météo
+    if 'weather_score' in conditions:
+        risk_score += conditions['weather_score'] * 0.5  # Ajoute 0.5 point par niveau de variation
+        if conditions['weather_score'] >= 2:
             high_risk += 1
 
-    if risk_score <= 1:
-        return "VERT", "Risque faible"
-    elif risk_score <= 2 or high_risk == 0:
-        return "ORANGE", "Conditions favorables - Surveillance recommandée"
-    else:
-        return "ROUGE", "Conditions très favorables - Présence probable"
+    # Messages personnalisés selon les conditions
+    weather_message = ""
+    if 'weather_description' in conditions and conditions['weather_description'] != "conditions stables":
+        weather_message = f" - Instabilité météo : {conditions['weather_description']}"
 
+    # Just get  weather_description, weather_score, wind, temp, humidity, precip
+    conditions = {k: v for k, v in conditions.items() if k in ['weather_description', 'wind', 'temp', 'humidity', 'precip']}
+    # Drapeaux
+    if risk_score <= 1.5:  # Seuil ajusté pour tenir compte des variations
+        return "VERT", f"Risque faible{weather_message}", conditions
+    elif risk_score <= 2.5 or high_risk == 0:
+        return "ORANGE", f"Conditions favorables - Surveillance recommandée{weather_message}", conditions
+    else:
+        return "ROUGE", f"Conditions très favorables - Présence probable{weather_message}", conditions
+      
 evaluate_risk(37.3386, -83.4707, "BHR", "forest", "strong")
 evaluate_risk(36.892, -86.1225, "BRR", "agriculture", "strong")
-evaluate_risk(39.4428, -85.0001, "BVR", "agriculture", "strong")
+

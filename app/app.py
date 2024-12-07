@@ -105,7 +105,7 @@ def predict():
                 'message': risk_analysis[1],
                 'conditions': risk_analysis[2]
             })
-
+        print(predictions)
         return jsonify({
             'success': True,
             'predictions': predictions

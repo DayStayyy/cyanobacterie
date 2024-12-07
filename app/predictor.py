@@ -1,10 +1,66 @@
 import requests
 from datetime import datetime, timedelta
 import pandas as pd
+import numpy as np
+
+def analyze_weather_variations(weather_data):
+    """
+    Analyse les variations météorologiques sur la période
+    Retourne un score de variation et un descriptif des changements
+    """
+    df = pd.DataFrame({
+        'temperature': weather_data['hourly']['temperature_2m'],
+        'humidity': weather_data['hourly']['relative_humidity_2m'],
+        'precipitation': weather_data['hourly']['precipitation'],
+        'wind_speed': weather_data['hourly']['wind_speed_10m']
+    })
+    
+    # Calculer les variations
+    variations = {
+        'temp_variation': df['temperature'].std(),
+        'humidity_variation': df['humidity'].std(),
+        'wind_variation': df['wind_speed'].std(),
+        'rain_episodes': len(df[df['precipitation'] > 0.5])  # Episodes de pluie > 0.5mm
+    }
+    
+    # Calculer le nombre de changements significatifs
+    significant_changes = 0
+    weather_changes = []
+    
+    # Variation significative de température (plus de 5 degrés)
+    temp_changes = df['temperature'].diff().abs() > 5
+    if temp_changes.any():
+        significant_changes += 1
+        weather_changes.append("variations importantes de température")
+    
+    # Alternance pluie/sec
+    rain_periods = (df['precipitation'] > 0.5).astype(int).diff().abs()
+    if rain_periods.sum() > 4:  # Plus de 2 alternances pluie/sec
+        significant_changes += 1
+        weather_changes.append("alternances pluie/sec")
+    
+    # Variation significative d'humidité (plus de 20%)
+    humidity_changes = df['humidity'].diff().abs() > 20
+    if humidity_changes.any():
+        significant_changes += 1
+        weather_changes.append("variations importantes d'humidité")
+    
+    # Variation significative de vent (plus de 10 km/h)
+    wind_changes = df['wind_speed'].diff().abs() > 10
+    if wind_changes.any():
+        significant_changes += 1
+        weather_changes.append("variations importantes de vent")
+    
+    weather_score = min(significant_changes, 3)  # Score plafonné à 3
+    variations['weather_score'] = weather_score
+    variations['weather_changes'] = len(weather_changes)
+    variations['weather_description'] = ", ".join(weather_changes) if weather_changes else "conditions stables"
+    
+    return variations
 
 def evaluate_risk_level(conditions, lake_type):
     """
-    Ajuste les seuils de risque selon le type de lac
+    Ajuste les seuils de risque selon le type de lac et les variations météo
     Types: 'forest', 'agriculture', 'urban'
     """
     risk_score = 0
@@ -38,21 +94,34 @@ def evaluate_risk_level(conditions, lake_type):
         risk_score += 1
         if conditions['wind'] < wind_threshold['high']:
             high_risk += 1
-    
-    if conditions.get('soil_temp') is not None:
-        # Sol (commun à tous les types)
+            
+    # Sol
+    if conditions.get('soil_temp'):
         if conditions['soil_temp'] > 24:
             risk_score += 1
             if conditions['soil_temp'] > 26:
                 high_risk += 1
 
+    # Score des variations météo
+    if 'weather_score' in conditions:
+        risk_score += conditions['weather_score'] * 0.5  # Ajoute 0.5 point par niveau de variation
+        if conditions['weather_score'] >= 2:
+            high_risk += 1
+
+    # Messages personnalisés selon les conditions
+    weather_message = ""
+    if 'weather_description' in conditions and conditions['weather_description'] != "conditions stables":
+        weather_message = f" - Instabilité météo : {conditions['weather_description']}"
+
+    # Just get  weather_description, weather_score, wind, temp, humidity, precip
+    conditions = {k: v for k, v in conditions.items() if k in ['weather_description', 'wind', 'temp', 'humidity', 'precip']}
     # Drapeaux
-    if risk_score <= 1:
-        return "VERT", "Risque faible", conditions
-    elif risk_score <= 2 or high_risk == 0:
-        return "ORANGE", "Conditions favorables - Surveillance recommandée", conditions
+    if risk_score <= 1.5:  # Seuil ajusté pour tenir compte des variations
+        return "VERT", f"Risque faible{weather_message}", conditions
+    elif risk_score <= 2.5 or high_risk == 0:
+        return "ORANGE", f"Conditions favorables - Surveillance recommandée{weather_message}", conditions
     else:
-        return "ROUGE", "Conditions très favorables - Présence probable", conditions
+        return "ROUGE", f"Conditions très favorables - Présence probable{weather_message}", conditions
 
 def get_forecast_data(latitude, longitude, date):
     """
@@ -75,7 +144,6 @@ def get_forecast_data(latitude, longitude, date):
     }
     
     response = requests.get(base_url, params=params)
-    print(response.json())
     return response.json()
 
 def get_historical_data(latitude, longitude, date):
@@ -117,12 +185,22 @@ def get_conditions(weather_data):
         'soil_moisture': weather_data['hourly']['soil_moisture_0_to_7cm']
     })
     
-    return {
+    # Analyser les variations météo
+    variations = analyze_weather_variations(weather_data)
+    
+    conditions = {
         'temp': round(df['temperature'].mean(), 1),
         'humidity': round(df['humidity'].mean(), 1),
         'wind': round(df['wind_speed'].mean(), 1),
+        'soil_temp': round(df['soil_temp'].mean(), 1),
         'precip': round(df['precipitation'].sum(), 1),
-   }
+        'soil_moisture': round(df['soil_moisture'].mean(), 1),
+        'weather_score': variations['weather_score'],
+        'weather_changes': variations['weather_changes'],
+        'weather_description': variations['weather_description']
+    }
+    
+    return conditions
 
 def predict_for_date(latitude, longitude, date, lake_type):
     try:
